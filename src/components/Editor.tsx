@@ -483,24 +483,52 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
         }
 
         const yieldToMain = () => new Promise(resolve => requestAnimationFrame(resolve));
+        
+        const INTRO_DUR = 1500; // 1.5s intro
+        const totalVideoDur = INTRO_DUR + totalDuration;
 
-        while (exportVT <= totalDuration) {
+        while (exportVT <= totalVideoDur) {
             if (exportCanceledRef.current) {
                 try { muxer.finalize(); } catch {}
                 setIsExporting(false);
                 return;
             }
 
-            const progress = exportVT / totalDuration;
-            const entry = processedLog.find((e) => e.t >= exportVT) || processedLog[processedLog.length - 1];
-            const entryIndex = processedLog.indexOf(entry);
-            
-            const isVisualChange = progress > 0.96 || entryIndex !== lastEntryIndex;
-
-            if (isVisualChange) {
-                renderFrame(ctx as unknown as CanvasRenderingContext2D, entry, progress, true);
-                lastEntryIndex = entryIndex;
+            if (exportVT < INTRO_DUR) {
+                // --- RENDER TITLE INTRO ---
+                const introProgress = exportVT / INTRO_DUR;
                 
+                ctx.fillStyle = '#0a0a0b'; 
+                ctx.fillRect(0, 0, w, h);
+                
+                // Atmosphere (Gradients)
+                ctx.save();
+                const g1 = ctx.createRadialGradient(w/4, 0, 0, w/4, 0, w*0.8);
+                g1.addColorStop(0, 'rgba(79, 70, 229, 0.15)');
+                g1.addColorStop(1, 'transparent');
+                ctx.fillStyle = g1;
+                ctx.fillRect(0, 0, w, h);
+                ctx.restore();
+
+                ctx.save();
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                let alpha = 1;
+                if (introProgress < 0.2) alpha = introProgress / 0.2;
+                if (introProgress > 0.8) alpha = (1 - introProgress) / 0.2;
+                ctx.globalAlpha = Math.max(0, alpha);
+                
+                ctx.fillStyle = '#FFFFFF';
+                // Use a smaller font for the title in vertical 720x1280
+                ctx.font = 'bold 54px "BIZ UDMincho", serif';
+                const titleText = title || 'Untitled';
+                ctx.fillText(titleText, w / 2, h / 2 - 20);
+                
+                ctx.fillStyle = '#6366f1';
+                ctx.fillRect(w / 2 - 60, h / 2 + 50, 120, 6);
+                ctx.restore();
+
                 try {
                     const frame = new VideoFrame(offscreen, { 
                         timestamp: Math.round(videoTime * 1000),
@@ -509,8 +537,32 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                     videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
                     frame.close();
                     framesEncoded++;
-                } catch (e) {
-                    console.warn('Frame encode failed:', e);
+                } catch (e) { console.warn(e); }
+
+            } else {
+                // --- RENDER TIMELAPSE ---
+                const timelapseVT = exportVT - INTRO_DUR;
+                const progress = timelapseVT / totalDuration;
+                const entry = processedLog.find((e) => e.t >= timelapseVT) || processedLog[processedLog.length - 1];
+                const entryIndex = processedLog.indexOf(entry);
+                
+                const isVisualChange = progress > 0.96 || entryIndex !== lastEntryIndex;
+
+                if (isVisualChange) {
+                    renderFrame(ctx as unknown as CanvasRenderingContext2D, entry, progress, true);
+                    lastEntryIndex = entryIndex;
+                    
+                    try {
+                        const frame = new VideoFrame(offscreen, { 
+                            timestamp: Math.round(videoTime * 1000),
+                            duration: Math.round(VIDEO_FRAME_DUR * 1000)
+                        });
+                        videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
+                        frame.close();
+                        framesEncoded++;
+                    } catch (e) {
+                        console.warn('Frame encode failed:', e);
+                    }
                 }
             }
 
@@ -519,7 +571,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
             loops++;
 
             if (loops % 30 === 0) {
-                setExportProgress(Math.min(99, (exportVT / totalDuration) * 100));
+                setExportProgress(Math.min(99, (exportVT / totalVideoDur) * 100));
                 
                 await yieldToMain();
                 
@@ -892,7 +944,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                 テキストバックアップ
               </button>
               <div className="px-4 py-2 text-[9px] text-neutral-500 font-bold uppercase tracking-widest border-t border-white/5">
-                Version 1.5
+                Version 1.6
               </div>
             </motion.div>
           </>

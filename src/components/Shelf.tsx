@@ -102,11 +102,65 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex flex-[0_0_auto] flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 relative">
           <div className="flex items-baseline relative">
             <span className="font-sans italic pr-1">Time<span className="text-indigo-500">×</span>Writer</span>
-            <span className="text-[10px] font-mono text-neutral-500 absolute -right-6 -bottom-1">v1.5</span>
+            <span className="text-[10px] font-mono text-neutral-500 absolute -right-6 -bottom-1">v1.6</span>
           </div>
           <span className="text-sm sm:text-base font-serif font-bold text-neutral-400 sm:ml-4">タイム×ライター</span>
         </h1>
-        <div className="relative">
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex flex-col items-end mr-1">
+             <span className="text-[7px] font-bold text-neutral-600 tracking-widest uppercase mb-0.5">Today's Progress</span>
+             <span className="text-[11px] font-mono font-black text-indigo-400">
+               {(() => {
+                  let total = 0;
+                  const startOfToday = new Date();
+                  startOfToday.setHours(0,0,0,0);
+                  const startTime = startOfToday.getTime();
+                  novels.forEach(n => {
+                    n.episodes.forEach(e => {
+                      if (!e.playbackLog || e.playbackLog.length === 0) return;
+                      const log = e.playbackLog;
+                      let lastLen = 0;
+                      const beforeToday = log.filter(entry => entry.t < startTime);
+                      if (beforeToday.length > 0) lastLen = beforeToday[beforeToday.length - 1].c.length;
+                      const todayEntries = log.filter(entry => entry.t >= startTime);
+                      todayEntries.forEach(entry => {
+                        const delta = entry.c.length - lastLen;
+                        if (delta > 0) total += delta;
+                        lastLen = entry.c.length;
+                      });
+                    });
+                  });
+                  return total.toLocaleString();
+               })()} chars
+             </span>
+          </div>
+          <div className="sm:hidden flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 rounded-full">
+            <span className="text-[8px] font-bold text-indigo-400 tracking-widest uppercase">Today:</span>
+            <span className="text-[10px] font-mono font-black text-indigo-300">
+              {(() => {
+                  let total = 0;
+                  const startOfToday = new Date();
+                  startOfToday.setHours(0,0,0,0);
+                  const startTime = startOfToday.getTime();
+                  novels.forEach(n => {
+                    n.episodes.forEach(e => {
+                      if (!e.playbackLog || e.playbackLog.length === 0) return;
+                      const log = e.playbackLog;
+                      let lastLen = 0;
+                      const beforeToday = log.filter(entry => entry.t < startTime);
+                      if (beforeToday.length > 0) lastLen = beforeToday[beforeToday.length - 1].c.length;
+                      const todayEntries = log.filter(entry => entry.t >= startTime);
+                      todayEntries.forEach(entry => {
+                        const delta = entry.c.length - lastLen;
+                        if (delta > 0) total += delta;
+                        lastLen = entry.c.length;
+                      });
+                    });
+                  });
+                  return total.toLocaleString();
+              })()}
+            </span>
+          </div>
           {!deleteMode && (
             <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-neutral-400 hover:bg-white/10 hover:text-white transition-colors">
               <Settings size={20} />
