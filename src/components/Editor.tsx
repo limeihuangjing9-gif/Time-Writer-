@@ -520,8 +520,9 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                 ctx.globalAlpha = Math.max(0, alpha);
                 
                 ctx.fillStyle = '#FFFFFF';
-                // Use a smaller font for the title in vertical 720x1280
-                ctx.font = 'bold 54px "BIZ UDMincho", serif';
+                // Shrink font size to 6% of width for better balance (approx 43px for 720w)
+                const titleFontSize = Math.floor(w * 0.06);
+                ctx.font = `bold ${titleFontSize}px "BIZ UDMincho", serif`;
                 const titleText = title || 'Untitled';
                 ctx.fillText(titleText, w / 2, h / 2 - 20);
                 
