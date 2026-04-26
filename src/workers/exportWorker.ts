@@ -119,8 +119,24 @@ const renderFrame = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCon
 
 self.onmessage = async (e: MessageEvent<any>) => {
   try {
-    const { processedLogData, totalDuration, playbackSpeed, title } = e.data;
-    const processedLog: PlaybackEntry[] = JSON.parse(processedLogData);
+    const { playbackLog, playbackSpeed, title } = e.data;
+    const safeLog = playbackLog && playbackLog.length > 0 ? playbackLog : [{ t: 0, c: '', p: 0 }];
+    
+    // Calculate processedLog internally
+    const processedLog: PlaybackEntry[] = [];
+    let lastRealT = safeLog[0].t;
+    let virtualT = 0;
+    safeLog.forEach((entry: any) => {
+        const delta = entry.t - lastRealT;
+        // Jump-cut: gaps > 0.5s are reduced to 0.1s
+        const jumpValue = delta > 500 ? 100 : delta;
+        virtualT += jumpValue;
+        processedLog.push({...entry, t: virtualT});
+        lastRealT = entry.t;
+    });
+    
+    const _totalDuration = processedLog.length > 0 ? processedLog[processedLog.length - 1].t : 0;
+    const totalDuration = Math.max(1000, _totalDuration);
     const FPS = 30;
     
     // HD resolution
@@ -139,7 +155,7 @@ self.onmessage = async (e: MessageEvent<any>) => {
 
     const videoEncoder = new VideoEncoder({
       output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: (e) => { console.error(e); self.postMessage({ type: 'error', error: e.message }); }
+      error: (e) => { console.error('VideoEncoder error:', e); self.postMessage({ type: 'error', error: e.message }); }
     });
 
     videoEncoder.configure({
@@ -155,16 +171,21 @@ self.onmessage = async (e: MessageEvent<any>) => {
 
     let exportVT = 0;
     let videoTime = 0;
-    const VIDEO_FRAME_DUR = 1000 / FPS;
+    const VIDEO_FRAME_DUR = 1000 / Math.max(1, FPS); // 33.33ms
     const VT_STEP = VIDEO_FRAME_DUR * Math.max(0.1, playbackSpeed);
     let framesEncoded = 0;
     let loops = 0;
     
     let lastEntryIndex = -1;
 
+    // Wait until VideoEncoder is ready
+    if (videoEncoder.state === 'unconfigured') {
+        throw new Error('VideoEncoder configuration failed');
+    }
+
     while (exportVT <= totalDuration) {
-      const progress = totalDuration > 0 ? exportVT / totalDuration : 1;
-      const entry = processedLog.find(e => e.t >= exportVT) || processedLog[processedLog.length - 1];
+      const progress = exportVT / totalDuration;
+      const entry = processedLog.find((e: any) => e.t >= exportVT) || processedLog[processedLog.length - 1];
       const entryIndex = processedLog.indexOf(entry);
       
       const isVisualChange = progress > 0.96 || entryIndex !== lastEntryIndex;
@@ -173,7 +194,7 @@ self.onmessage = async (e: MessageEvent<any>) => {
           renderFrame(ctx, entry, progress, w, h);
           lastEntryIndex = entryIndex;
           
-          const frame = new VideoFrame(offscreen, { timestamp: videoTime * 1000 });
+          const frame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
           // Force keyframe every 60 encoded frames
           videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
           frame.close();
@@ -185,16 +206,23 @@ self.onmessage = async (e: MessageEvent<any>) => {
       loops++;
 
       if (loops % 30 === 0) {
-         self.postMessage({ type: 'progress', progress: (exportVT / totalDuration) * 100 });
-         await new Promise(r => setTimeout(r, 0));
+         self.postMessage({ type: 'progress', progress: Math.min(99, (exportVT / totalDuration) * 100) });
+         await new Promise(r => setTimeout(r, 0)); // Ensure we yield to event loop
+         
+         // Backpressure
+         while (videoEncoder.encodeQueueSize > 60) {
+            await new Promise(r => setTimeout(r, 10));
+         }
       }
     }
 
     // Force one last frame at 100% just to be sure
-    renderFrame(ctx, processedLog[processedLog.length - 1], 1, w, h);
-    const finalFrame = new VideoFrame(offscreen, { timestamp: videoTime * 1000 });
-    videoEncoder.encode(finalFrame, { keyFrame: true });
-    finalFrame.close();
+    if (processedLog.length > 0) {
+      renderFrame(ctx, processedLog[processedLog.length - 1], 1, w, h);
+      const finalFrame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
+      videoEncoder.encode(finalFrame, { keyFrame: true });
+      finalFrame.close();
+    }
 
     await videoEncoder.flush();
     muxer.finalize();

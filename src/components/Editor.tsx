@@ -390,15 +390,44 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     worker.onmessage = (e) => {
       const msg = e.data;
       if (msg.type === 'progress') {
-        setExportProgress(msg.progress);
+        setExportProgress(Math.min(99, msg.progress)); // Cap at 99 until done
       } else if (msg.type === 'done') {
         setExportResult({ blob: msg.blob, filename: msg.filename, mimeType: msg.mimeType });
         setExportProgress(100);
         worker.terminate();
+
+        const doDownload = () => {
+            const url = URL.createObjectURL(msg.blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = msg.filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
+        if (mode === 'share' && navigator.share) {
+            const file = new File([msg.blob], msg.filename, { type: msg.mimeType });
+            navigator.share({
+                title: title,
+                files: [file]
+            }).catch(e => {
+                console.log("Share failed or was cancelled", e);
+                doDownload(); 
+            }).finally(() => {
+                setTimeout(() => { setIsExporting(false); setExportResult(null); }, 1500);
+            });
+        } else {
+            // 3. 自動ダウンロードの実行
+            doDownload();
+            setTimeout(() => { setIsExporting(false); setExportResult(null); }, 1500);
+        }
       } else if (msg.type === 'error') {
         console.error('Export Error:', msg.error);
         setIsExporting(false);
         worker.terminate();
+        alert('動画生成中にエラーが発生しました: ' + msg.error);
       }
     };
 
@@ -406,11 +435,11 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
       console.error('Worker Error:', e);
       setIsExporting(false);
       worker.terminate();
+      alert('動画生成ワーカーの起動に失敗しました。');
     };
 
     worker.postMessage({
-      processedLogData: JSON.stringify(processedLog),
-      totalDuration,
+      playbackLog: playbackLogRef.current,
       playbackSpeed,
       title
     });
