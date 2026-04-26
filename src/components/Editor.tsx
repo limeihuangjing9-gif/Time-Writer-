@@ -380,83 +380,40 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
   const [exportResult, setExportResult] = useState<{ blob: Blob; filename: string; mimeType: string } | null>(null);
 
   const runExport = async (mode: 'download' | 'share' = 'download') => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
     setIsExporting(true);
     setIsPaused(true);
     setExportProgress(0);
     setExportResult(null);
-    
-    // Save original state
-    const originalW = canvas.width, originalH = canvas.height;
-    
-    // Set fixed export resolution (9:16 Vertical format)
-    canvas.width = 1080; 
-    canvas.height = 1920;
-    
-    // Keep the CSS style intact to prevent UI layout breaking
-    // object-contain will naturally pillar-box the vertical video in the UI
 
-    
-    const stream = canvas.captureStream(30); 
-    
-    const mimeTypes = [
-      'video/mp4;codecs=h264',
-      'video/mp4;codecs=avc1',
-      'video/mp4',
-      'video/webm;codecs=vp9',
-      'video/webm'
-    ];
-    const mimeType = mimeTypes.find(m => MediaRecorder.isTypeSupported(m)) || 'video/webm';
-    
-    const recorder = new MediaRecorder(stream, { 
-      mimeType,
-      videoBitsPerSecond: 800000 
+    const worker = new Worker(new URL('../workers/exportWorker.ts', import.meta.url), { type: 'module' });
+
+    worker.onmessage = (e) => {
+      const msg = e.data;
+      if (msg.type === 'progress') {
+        setExportProgress(msg.progress);
+      } else if (msg.type === 'done') {
+        setExportResult({ blob: msg.blob, filename: msg.filename, mimeType: msg.mimeType });
+        setExportProgress(100);
+        worker.terminate();
+      } else if (msg.type === 'error') {
+        console.error('Export Error:', msg.error);
+        setIsExporting(false);
+        worker.terminate();
+      }
+    };
+
+    worker.onerror = (e) => {
+      console.error('Worker Error:', e);
+      setIsExporting(false);
+      worker.terminate();
+    };
+
+    worker.postMessage({
+      processedLogData: JSON.stringify(processedLog),
+      totalDuration,
+      playbackSpeed,
+      title
     });
-    const chunks: Blob[] = [];
-    recorder.ondataavailable = e => chunks.push(e.data);
-    recorder.onstop = async () => {
-      const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-      const filename = `${title || 'timelapse'}_${new Date().getTime()}.${extension}`;
-      const blob = new Blob(chunks, { type: mimeType });
-      
-      // Instead of immediate share/download, store result for manual gesture
-      setExportResult({ blob, filename, mimeType });
-      
-      // Reset canvas resolution
-      canvas.width = originalW;
-      canvas.height = originalH;
-      setupCanvas();
-    };
-    recorder.start(1000);
-
-    const ctx = canvas.getContext('2d')!;
-    let exportVT = 0;
-    
-    // Fixed FPS configuration (30fps for lighter export)
-    const FPS = 30;
-    const FRAME_TIME_MS = 1000 / FPS;
-
-    let timeoutId: NodeJS.Timeout;
-
-    const exportLoop = () => {
-        // Increment virtual time by exactly the equivalent of one frame multiplied by playback speed
-        exportVT += (FRAME_TIME_MS * Math.max(0.1, playbackSpeed));
-
-        if (exportVT >= totalDuration) {
-            renderFrame(ctx, processedLog[processedLog.length - 1], 1, true);
-            setTimeout(() => recorder.stop(), 500); 
-            return;
-        }
-
-        const entry = processedLog.find(e => e.t >= exportVT) || processedLog[processedLog.length - 1];
-        renderFrame(ctx, entry, exportVT / totalDuration, true);
-        
-        setExportProgress((exportVT / totalDuration) * 100);
-        timeoutId = setTimeout(exportLoop, FRAME_TIME_MS);
-    };
-
-    exportLoop();
   };
 
   const finalizeShare = async () => {
@@ -606,8 +563,15 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                          <>
                            <div className="w-14 h-14 border-[5px] border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin shadow-2xl" />
                            <div className="flex flex-col items-center gap-1.5 text-center">
-                             <span className="text-[12px] font-bold tracking-[0.5em] text-white animate-pulse uppercase">Saving Production</span>
-                             <span className="text-[9px] text-neutral-500 tracking-widest uppercase">Recording frames...</span>
+                             <span className="text-[12px] font-bold tracking-[0.2em] text-white uppercase">
+                               動画を生成中... {Math.floor(exportProgress)}%
+                             </span>
+                             <span className="text-[9px] text-neutral-500 tracking-widest uppercase">
+                               {exportProgress < 100 ? 'Recording frames...' : 'Finalizing...'}
+                             </span>
+                           </div>
+                           <div className="w-48 h-1.5 bg-white/5 rounded-full overflow-hidden mt-2">
+                             <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${exportProgress}%` }} />
                            </div>
                          </>
                        ) : (
