@@ -246,8 +246,6 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
             if (entry.p >= startOfSeg && entry.p <= endOfSeg) {
                 cursorVisualLine = visualLines.length;
                 
-                // Cursor visual col needs to map UTF-16 index back to Unicode chars
-                // to align properly with the character grid!
                 const textBeforeCursor = seg.substring(0, entry.p - startOfSeg);
                 cursorVisualCol = Array.from(textBeforeCursor).length;
             }
@@ -256,7 +254,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
             charCount += seg.length;
         });
         
-        charCount += 1; // For the \n we split on
+        charCount += 1; 
     });
 
     const charSize = 32; 
@@ -264,22 +262,24 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     const blockWidth = 26 * charSize;
     const totalTextHeight = visualLines.length * lineHeight;
     
+    // Calculate a scale that fits the width with margins
+    const fitWidthScale = (w * 0.95) / blockWidth; // Use 95% of width for better size
     let scale = 1.0; 
     let tx = 0, ty = 0;
 
     if (progress > 0.96) {
        // --- FINISH EFFECT: ZOOM OUT ---
        const t = (progress - 0.96) / 0.04; 
-       const targetScale = Math.min((w * 0.85) / blockWidth, (h * 0.85) / Math.max(totalTextHeight, 1));
-       const startScale = isExport ? 1.0 : 0.42; 
+       const targetScale = Math.min(fitWidthScale, (h * 0.85) / Math.max(totalTextHeight, 1));
+       const startScale = isExport ? fitWidthScale : 0.42; 
        scale = startScale + (targetScale - startScale) * t;
        tx = (w / 2) - (blockWidth * scale / 2);
        ty = (h / 2) - (totalTextHeight * scale / 2);
     } else {
        // --- WRITING EFFECT: FOCUS ON CURSOR ---
-       scale = isExport ? 1.0 : 0.42; 
+       scale = isExport ? fitWidthScale : 0.42; 
        const cursorY = cursorVisualLine * lineHeight + (lineHeight / 2);
-       ty = (h / 2.5) - (cursorY * scale); // Position cursor slightly above center
+       ty = (h / 2.5) - (cursorY * scale); 
        tx = (w / 2) - (blockWidth * scale / 2);
     }
 
@@ -428,12 +428,12 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
             }
         });
 
-        // Use a more widely supported basic H.264 profile
+        // Use a more widely supported Main Profile for better thumbnail/preview visibility on mobile
         videoEncoder.configure({
-            codec: 'avc1.42e01f', // Constrained Baseline Profile, Level 3.1
+            codec: 'avc1.4d401f', // Main Profile, Level 3.1
             width: w,
             height: h,
-            bitrate: 1_500_000, 
+            bitrate: 1_200_000, 
             framerate: FPS,
             latencyMode: 'quality'
         });
