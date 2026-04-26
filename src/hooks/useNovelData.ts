@@ -78,26 +78,6 @@ const getFromDB = async (): Promise<Novel[] | null> => {
 
 const saveToDB = async (data: Novel[]) => {
   try {
-    // 1. Core Backup (Text only, very safe)
-    try {
-      const coreData = data.map(n => ({
-        ...n,
-        episodes: n.episodes.map(e => ({ ...e, playbackLog: [] })) // Strip logs for backup
-      }));
-      localStorage.setItem(CORE_BACKUP_KEY, JSON.stringify(coreData));
-    } catch (e) {
-      console.warn("Core backup failed", e);
-    }
-
-    // 2. Full Storage (LocalStorage Sync)
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    } catch (quotaEx) {
-      console.warn("LocalStorage full, trying to save without oldest logs...");
-      // Optional: prune old logs strategy if needed
-    }
-
-    // 3. Persistent Storage (IndexedDB Async)
     const db = await openDB();
     return new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE_NAME, 'readwrite');
@@ -120,24 +100,7 @@ const generateUUID = () => {
 };
 
 export function useNovelData() {
-  // Sync initialization for ironclad reliability and zero-flicker load
-  const [novels, setNovels] = useState<Novel[]>(() => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-      const backup = localStorage.getItem(CORE_BACKUP_KEY);
-      if (backup) {
-        const parsed = JSON.parse(backup);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error("Critical: Initial sync load failed", e);
-    }
-    return [];
-  });
+  const [novels, setNovels] = useState<Novel[]>([]);
   
   const [isLoaded, setIsLoaded] = useState(false);
   const saveInProgress = useRef(false);
@@ -145,10 +108,33 @@ export function useNovelData() {
 
   useEffect(() => {
     const loadData = async () => {
-      const data = await getFromDB();
+      let data = await getFromDB();
+      const localDataRaw = localStorage.getItem(STORAGE_KEY);
+      const localData = localDataRaw ? JSON.parse(localDataRaw) : null;
+      
+      // Perform Migration: If localStorage exists and is newer or DB is empty, use it and clear localStorage
+      if (localData && Array.isArray(localData) && localData.length > 0) {
+        if (!data || data.length === 0) {
+            data = localData;
+            // Write migrated data to IDB
+            await saveToDB(localData);
+        } else {
+            const maxLocalUpdate = Math.max(...localData.map(n => n.updatedAt || 0));
+            const maxDbUpdate = Math.max(...data.map(n => n.updatedAt || 0));
+            if (maxLocalUpdate > maxDbUpdate) {
+                data = localData;
+                await saveToDB(localData);
+            }
+        }
+        // Remove from localStorage to signify complete migration and free space
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+        } catch(e) {}
+      }
+
       const visited = localStorage.getItem('kotobako_tutorial_v11');
       
-      if (!visited && (!data || data.length === 0) && novels.length === 0) {
+      if (!visited && (!data || data.length === 0)) {
         setNovels(INITIAL_SAMPLE_DATA);
         localStorage.setItem('kotobako_tutorial_v11', 'true');
       } else if (data && Array.isArray(data) && data.length > 0) {
@@ -177,18 +163,7 @@ export function useNovelData() {
           };
         });
         
-        let shouldOverwrite = true;
-        if (novels.length > 0) {
-          const maxLocalUpdate = Math.max(...novels.map(n => n.updatedAt || 0));
-          const maxDbUpdate = Math.max(...formattedData.map(n => n.updatedAt || 0));
-          if (maxLocalUpdate >= maxDbUpdate) {
-            shouldOverwrite = false;
-          }
-        }
-        
-        if (shouldOverwrite) {
-          setNovels(formattedData);
-        }
+        setNovels(formattedData);
       }
       setIsLoaded(true);
     };

@@ -227,11 +227,12 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
 
     logicalLines.forEach((l, lIdx) => {
         const segments: string[] = [];
-        if (l.length === 0) {
+        const chars = Array.from(l);
+        if (chars.length === 0) {
             segments.push("");
         } else {
-            for (let i = 0; i < l.length; i += 26) {
-                segments.push(l.substring(i, i + 26));
+            for (let i = 0; i < chars.length; i += 26) {
+                segments.push(chars.slice(i, i + 26).join(''));
             }
         }
 
@@ -242,7 +243,11 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
             // Check if cursor is in this visual segment
             if (entry.p >= startOfSeg && entry.p <= endOfSeg) {
                 cursorVisualLine = visualLines.length;
-                cursorVisualCol = entry.p - startOfSeg;
+                
+                // Cursor visual col needs to map UTF-16 index back to Unicode chars
+                // to align properly with the character grid!
+                const textBeforeCursor = seg.substring(0, entry.p - startOfSeg);
+                cursorVisualCol = Array.from(textBeforeCursor).length;
             }
             
             visualLines.push(seg);
@@ -280,12 +285,15 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     ctx.translate(tx, ty);
     ctx.scale(scale, scale);
 
-    ctx.font = `${isExport ? 'bold ' : ''}${charSize}px "BIZ UDMincho Mono", "MS Mincho", serif`;
+    ctx.font = `${isExport ? 'bold ' : ''}${charSize}px "BIZ UDMincho Mono", "MS Mincho", monospace, serif`;
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#FFFFFF';
     
     visualLines.forEach((line, i) => {
-       ctx.fillText(line, 0, i * lineHeight);
+       const chars = Array.from(line);
+       for (let j = 0; j < chars.length; j++) {
+           ctx.fillText(chars[j], j * charSize, i * lineHeight);
+       }
     });
 
     if (progress <= 0.96) {
@@ -425,13 +433,16 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
 
     const ctx = canvas.getContext('2d')!;
     let exportVT = 0;
-    let lastExportTime = performance.now();
+    
+    // Fixed FPS configuration
+    const FPS = 60;
+    const FRAME_TIME_MS = 1000 / FPS;
 
-    const exportLoop = (now: number) => {
-        const delta = now - lastExportTime;
-        lastExportTime = now;
+    let timeoutId: NodeJS.Timeout;
 
-        exportVT += (delta * playbackSpeed);
+    const exportLoop = () => {
+        // Increment virtual time by exactly the equivalent of one frame multiplied by playback speed
+        exportVT += (FRAME_TIME_MS * Math.max(0.1, playbackSpeed));
 
         if (exportVT >= totalDuration) {
             renderFrame(ctx, processedLog[processedLog.length - 1], 1, true);
@@ -443,11 +454,10 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
         renderFrame(ctx, entry, exportVT / totalDuration, true);
         
         setExportProgress((exportVT / totalDuration) * 100);
-        requestAnimationFrame(exportLoop);
+        timeoutId = setTimeout(exportLoop, FRAME_TIME_MS);
     };
 
-    lastExportTime = performance.now();
-    requestAnimationFrame(exportLoop);
+    exportLoop();
   };
 
   const finalizeShare = async () => {
