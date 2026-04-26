@@ -18,6 +18,8 @@ interface EditorProps {
   onSave: (content: string, playbackLog: PlaybackEntry[]) => void;
 }
 
+const VERSION = '1.6.2';
+
 export default function Editor({ title, initialContent, initialPlaybackLog, onBack, onSave }: EditorProps) {
   const [content, setContent] = useState(initialContent);
   const [history, setHistory] = useState<string[]>([initialContent]);
@@ -132,6 +134,42 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
         textarea.selectionStart = textarea.selectionEnd = start + 1;
       }
     }, 0);
+  };
+
+  const insertRuby = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = content.substring(start, end);
+    
+    let newContent: string;
+    let newCursorPos: number;
+    
+    if (selectedText.length > 0) {
+      newContent = content.substring(0, start) + `[${selectedText}|ルビ]` + content.substring(end);
+      newCursorPos = start + selectedText.length + 2; 
+    } else {
+      newContent = content.substring(0, start) + '[|]' + content.substring(end);
+      newCursorPos = start + 1;
+    }
+    
+    setContent(newContent);
+    recordState(newContent, newCursorPos);
+    textarea.focus();
+    setTimeout(() => {
+      if (selectedText.length > 0) {
+        textarea.setSelectionRange(start + selectedText.length + 2, start + selectedText.length + 4);
+      } else {
+        textarea.selectionStart = textarea.selectionEnd = newCursorPos;
+      }
+    }, 0);
+  };
+
+  const handleCopyFull = () => {
+    navigator.clipboard.writeText(content).then(() => {
+      showToast('全文コピー完了');
+    });
   };
 
   const insertText = (text: string) => {
@@ -719,74 +757,80 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
         )}
       </AnimatePresence>
 
-      {/* --- EDITOR HEADER --- */}
+      {/* --- EDITOR HEADER (image_24 Style) --- */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-[#0b0b0d] border-b border-white/5 pt-safe shadow-lg">
-        <div className="h-14 px-4 flex items-center justify-between border-b border-white/5">
+        <div className="h-16 px-4 flex items-center justify-between border-b border-white/5">
           <div className="flex items-center gap-3">
              <button onClick={() => { onSave(content, playbackLogRef.current); onBack(); }} className="w-10 h-10 rounded-full hover:bg-white/5 flex items-center justify-center text-neutral-500 transition-colors">
                <ArrowLeft size={22} />
              </button>
              <div className="flex flex-col">
                <span className="text-[8px] font-bold tracking-widest text-neutral-600 uppercase">Manuscript</span>
-               <h1 className="text-xs font-bold truncate max-w-[150px]">{title}</h1>
+               <div className="flex items-center gap-3">
+                 <h1 className="text-sm font-bold truncate max-w-[150px]">{title}</h1>
+                 <AnimatePresence>
+                   {showSavedIndicator && (
+                     <motion.span 
+                       initial={{ opacity: 0, x: -5 }}
+                       animate={{ opacity: 1, x: 0 }}
+                       exit={{ opacity: 0, x: -5 }}
+                       className="text-[8px] font-bold text-green-500 tracking-widest flex items-center gap-1"
+                     >
+                       <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
+                       SAVED
+                     </motion.span>
+                   )}
+                 </AnimatePresence>
+               </div>
              </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-end mr-1 relative">
-              <AnimatePresence>
-                {showSavedIndicator && (
-                  <motion.span 
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -5 }}
-                    className="absolute -top-4 right-0 text-[8px] font-bold text-green-500 tracking-widest flex items-center gap-1"
-                  >
-                    <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
-                    SAVED
-                  </motion.span>
-                )}
-              </AnimatePresence>
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col items-end mr-1">
               <span className="text-[7px] font-bold text-neutral-600 tracking-widest uppercase mb-0.5">CHARS</span>
-              <span className="text-[11px] font-mono font-bold text-neutral-400">{content.length.toLocaleString()}</span>
+              <span className="text-[11px] font-mono font-bold text-neutral-400">{content.replace(/[\s　]/g, '').length.toLocaleString()}</span>
             </div>
-            <button onClick={() => { onSave(content, playbackLogRef.current); setShowSavedIndicator(true); setTimeout(() => setShowSavedIndicator(false), 2000); }} className="px-5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] font-bold tracking-widest flex items-center gap-2 active:scale-95 transition-all">
-               <Save size={14} className="text-indigo-400" /> SAVE
-            </button>
-            <button onClick={() => setShowSettings(!showSettings)} className="w-10 h-10 rounded-full hover:bg-white/5 flex items-center justify-center text-neutral-500 transition-colors">
-              <Settings size={20} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => { onSave(content, playbackLogRef.current); setShowSavedIndicator(true); setTimeout(() => setShowSavedIndicator(false), 2000); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-full text-[10px] font-bold tracking-[0.2em] flex items-center gap-2 active:scale-95 transition-all text-white shadow-lg shadow-indigo-600/20">
+                 <Save size={14} className="text-white" /> SAVE
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="h-14 px-4 flex items-center bg-[#111114] overflow-x-auto no-scrollbar gap-1 border-t border-white/5">
-           <button onClick={undo} disabled={historyIndex <= 0} className="w-10 h-10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg disabled:opacity-20 transition-all active:scale-90"><Undo2 size={18} /></button>
-           <button onClick={redo} disabled={historyIndex >= history.length - 1} className="w-10 h-10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg disabled:opacity-20 transition-all active:scale-90"><Redo2 size={18} /></button>
-           <div className="h-4 w-px bg-white/10 mx-2 shrink-0" />
-           <button onClick={() => insertText('|')} className="w-10 h-10 flex items-center justify-center text-[16px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors">|</button>
+        {/* Toolbar (Standard Header Style from image_24) */}
+        <div className="h-12 px-4 flex items-center bg-[#111114] overflow-x-auto no-scrollbar gap-1 border-t border-white/5">
+           <button onClick={undo} disabled={historyIndex <= 0} className="w-9 h-9 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg disabled:opacity-20 transition-all active:scale-90"><Undo2 size={18} /></button>
+           <button onClick={redo} disabled={historyIndex >= history.length - 1} className="w-9 h-9 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg disabled:opacity-20 transition-all active:scale-90"><Redo2 size={18} /></button>
            
-           <button onClick={insertBrackets} className="px-3 h-10 flex items-center justify-center text-[18px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all group shrink-0">
+           <div className="h-4 w-px bg-white/10 mx-2 shrink-0" />
+           
+           <button onClick={insertBrackets} className="px-3 h-9 flex items-center justify-center text-[18px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all group shrink-0">
              <span className="group-hover:scale-110 transition-transform">「 」</span>
            </button>
 
-           <button onClick={() => insertText('…')} className="w-10 h-10 flex items-center justify-center text-[18px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg">…</button>
-           <button onClick={() => insertText('――')} className="w-10 h-10 flex items-center justify-center text-[18px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all active:scale-90 shrink-0">――</button>
-           <button onClick={() => insertText('≪ルビ≫')} className="w-10 h-10 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all active:scale-90 shrink-0"><BookOpenText size={18} /></button>
+           <button onClick={() => insertText('…')} className="w-9 h-9 flex items-center justify-center text-[18px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all active:scale-90 shrink-0">…</button>
+           <button onClick={() => insertText('――')} className="w-9 h-9 flex items-center justify-center text-[18px] font-serif font-bold text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all active:scale-90 shrink-0">――</button>
+           <button onClick={insertRuby} className="w-9 h-9 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-all active:scale-90 shrink-0"><BookOpenText size={18} /></button>
            
-           <div className="flex-1" /> {/* Maximal separation between symbol group and system buttons */}
+           <div className="flex-1" /> 
            
-           <button onClick={() => { navigator.clipboard.writeText(content); showToast('COPIED'); }} className="px-4 h-10 flex items-center gap-2 text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0 group">
+           <button onClick={handleCopyFull} className="px-3 h-9 flex items-center gap-2 text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0 group">
              <Copy size={16} className="group-hover:scale-110 transition-transform" />
-             <span className="text-[10px] font-bold tracking-widest uppercase">COPY</span>
+             <span className="text-[9px] font-bold tracking-widest uppercase">COPY</span>
            </button>
            
-           <div className="flex-1 min-w-[40px]" /> {/* Increased gap */}
+           <button onClick={() => setShowSettings(!showSettings)} className="w-9 h-9 flex items-center justify-center text-neutral-500 hover:text-white hover:bg-white/5 rounded-lg transition-colors shrink-0">
+             <Settings size={18} />
+           </button>
            
-           <div className="flex items-center gap-4 pr-1 shrink-0">
-             <button onClick={() => { setShowTimeLapse(true); setIsPaused(true); setCurrentTimeMs(0); }} className="flex items-center gap-2 pl-4 pr-5 h-10 bg-indigo-600/10 hover:bg-indigo-600/20 text-indigo-400 border border-indigo-500/20 rounded-full text-[9px] font-bold tracking-[0.2em] transition-all active:scale-95">
-               <Play size={14} fill="currentColor" /> TIMELAPSE
-             </button>
-           </div>
+           <div className="h-6 w-px bg-white/5 mx-2 shrink-0" />
+
+           <button 
+             onClick={() => { setShowTimeLapse(true); setIsPaused(true); setCurrentTimeMs(0); }} 
+             className="flex items-center gap-2 px-4 h-9 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 rounded-full text-[9px] font-bold tracking-[0.2em] transition-all active:scale-95 shrink-0"
+           >
+             <Play size={12} fill="currentColor" /> TIMELAPSE
+           </button>
         </div>
       </header>
 
@@ -794,15 +838,16 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
       <main className="w-full h-screen pt-[112px] flex flex-col items-center">
         <textarea
           ref={textareaRef}
-          className="editor-26 !w-[26em] max-w-full flex-1 bg-transparent text-[#f8fafc] leading-[1.8] text-[24px] font-serif outline-none resize-none overflow-y-auto block placeholder:opacity-5 caret-indigo-500 transition-colors"
+          className="editor-26 !w-[26em] max-w-full flex-1 bg-transparent text-[#f8fafc] leading-[1.8] text-[24px] font-serif outline-none resize-none overflow-y-auto block placeholder:opacity-5 caret-indigo-500 transition-colors px-4 pb-20"
           value={content}
           onChange={handleInput}
           onSelect={(e) => recordState(content, (e.target as HTMLTextAreaElement).selectionEnd)}
-          placeholder="　……筆を。……動かせ。"
+          placeholder="物語を始めましょう..."
           spellCheck={false}
-          autoFocus
         />
       </main>
+
+
 
       {/* --- TIMELAPSE THEATER --- */}
       <AnimatePresence>
@@ -957,7 +1002,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                 テキストバックアップ
               </button>
               <div className="px-4 py-2 text-[9px] text-neutral-500 font-bold uppercase tracking-widest border-t border-white/5">
-                Version 1.6
+                Version {VERSION}
               </div>
             </motion.div>
           </>
