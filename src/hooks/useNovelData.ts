@@ -176,7 +176,19 @@ export function useNovelData() {
             }))
           };
         });
-        setNovels(formattedData);
+        
+        let shouldOverwrite = true;
+        if (novels.length > 0) {
+          const maxLocalUpdate = Math.max(...novels.map(n => n.updatedAt || 0));
+          const maxDbUpdate = Math.max(...formattedData.map(n => n.updatedAt || 0));
+          if (maxLocalUpdate >= maxDbUpdate) {
+            shouldOverwrite = false;
+          }
+        }
+        
+        if (shouldOverwrite) {
+          setNovels(formattedData);
+        }
       }
       setIsLoaded(true);
     };

@@ -76,12 +76,17 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     recordState(raw, cursor);
   };
 
-  // Safe unmount protection (Removed auto-save to ensure Savvy/Manual control)
+  // Auto-save debounced
   useEffect(() => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      onSave(content, playbackLogRef.current);
+    }, 1500); // 1.5 seconds debounce
+    
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, []);
+  }, [content, onSave]);
 
   // --- 2. WRITING SUPPORT (Auto-scroll & Toolbar) ---
 
