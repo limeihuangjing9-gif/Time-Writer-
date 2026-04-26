@@ -422,19 +422,28 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
 
         const videoEncoder = new VideoEncoder({
             output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-            error: (e) => { console.error('VideoEncoder error:', e); throw e; }
+            error: (e) => { 
+                console.error('VideoEncoder error:', e);
+                // Non-fatal error log to allow progress if possible, but usually fatal
+            }
         });
 
+        // Use a more widely supported basic H.264 profile
         videoEncoder.configure({
-            codec: 'avc1.4d0032', // More compatible profile for mobile Main Profile Level 5.0
+            codec: 'avc1.42e01f', // Constrained Baseline Profile, Level 3.1
             width: w,
             height: h,
-            bitrate: 2_000_000, 
-            framerate: FPS
+            bitrate: 1_500_000, 
+            framerate: FPS,
+            latencyMode: 'quality'
         });
 
         const offscreen = new OffscreenCanvas(w, h);
-        const ctx = offscreen.getContext('2d', { alpha: false, desynchronized: true }) as OffscreenCanvasRenderingContext2D;
+        const ctx = offscreen.getContext('2d', { 
+            alpha: false, 
+            desynchronized: true,
+            willReadFrequently: false
+        }) as OffscreenCanvasRenderingContext2D;
 
         let exportVT = 0;
         let videoTime = 0;
@@ -453,7 +462,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
 
         while (exportVT <= totalDuration) {
             if (exportCanceledRef.current) {
-                muxer.finalize(); // Attempt to close cleanly, or just break
+                try { muxer.finalize(); } catch {}
                 setIsExporting(false);
                 return;
             }
@@ -468,10 +477,17 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                 renderFrame(ctx as unknown as CanvasRenderingContext2D, entry, progress, true);
                 lastEntryIndex = entryIndex;
                 
-                const frame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
-                videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
-                frame.close();
-                framesEncoded++;
+                try {
+                    const frame = new VideoFrame(offscreen, { 
+                        timestamp: Math.round(videoTime * 1000),
+                        duration: Math.round(VIDEO_FRAME_DUR * 1000)
+                    });
+                    videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
+                    frame.close();
+                    framesEncoded++;
+                } catch (e) {
+                    console.warn('Frame encode failed:', e);
+                }
             }
 
             exportVT += VT_STEP;
@@ -481,27 +497,48 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
             if (loops % 30 === 0) {
                 setExportProgress(Math.min(99, (exportVT / totalDuration) * 100));
                 
-                await yieldToMain(); // Yield to React
+                await yieldToMain();
                 
                 while (videoEncoder.encodeQueueSize > 60) {
-                    await new Promise(r => setTimeout(r, 10)); // Slow down backpressure
+                    await new Promise(r => setTimeout(r, 10));
                 }
             }
         }
 
         if (processedLog.length > 0) {
             renderFrame(ctx as unknown as CanvasRenderingContext2D, processedLog[processedLog.length - 1], 1, true);
-            const finalFrame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
-            videoEncoder.encode(finalFrame, { keyFrame: true });
-            finalFrame.close();
+            try {
+                const finalFrame = new VideoFrame(offscreen, { 
+                    timestamp: Math.round(videoTime * 1000),
+                    duration: Math.round(VIDEO_FRAME_DUR * 1000)
+                });
+                videoEncoder.encode(finalFrame, { keyFrame: true });
+                finalFrame.close();
+            } catch (e) {
+                console.warn('Final frame encode failed:', e);
+            }
         }
 
         setExportProgress(99.9);
         await yieldToMain();
-        await videoEncoder.flush();
-        muxer.finalize();
+        
+        try {
+            await videoEncoder.flush();
+        } catch (e) {
+            console.warn('Flush error (attempting to finalize anyway):', e);
+        }
+
+        try {
+            muxer.finalize();
+        } catch (e) {
+            console.error('Muxer finalize error:', e);
+        }
 
         const buffer = muxer.target.buffer;
+        if (!buffer || buffer.byteLength === 0) {
+            throw new Error('Generated video buffer is empty');
+        }
+
         const blob = new Blob([buffer], { type: 'video/mp4' });
         const filename = `${title || 'timelapse'}_${new Date().getTime()}.mp4`;
         const mimeType = 'video/mp4';
