@@ -520,14 +520,26 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                 ctx.globalAlpha = Math.max(0, alpha);
                 
                 ctx.fillStyle = '#FFFFFF';
-                // Shrink font size to 6% of width for better balance (approx 43px for 720w)
-                const titleFontSize = Math.floor(w * 0.06);
-                ctx.font = `bold ${titleFontSize}px "BIZ UDMincho", serif`;
+                // Dynamic font size: Start at 5% of width, but scale down if too long for a 85% safe-zone
+                const baseFontSize = Math.floor(w * 0.05);
+                const maxWidth = w * 0.85;
                 const titleText = title || 'Untitled';
+                
+                ctx.font = `bold ${baseFontSize}px "BIZ UDMincho", serif`;
+                let metrics = ctx.measureText(titleText);
+                let finalFontSize = baseFontSize;
+                
+                if (metrics.width > maxWidth) {
+                    finalFontSize = Math.floor(baseFontSize * (maxWidth / metrics.width));
+                    ctx.font = `bold ${finalFontSize}px "BIZ UDMincho", serif`;
+                }
+                
                 ctx.fillText(titleText, w / 2, h / 2 - 20);
                 
                 ctx.fillStyle = '#6366f1';
-                ctx.fillRect(w / 2 - 60, h / 2 + 50, 120, 6);
+                // Adjust underline width relative to final font size
+                const underlineWidth = Math.min(maxWidth, finalFontSize * 2.5);
+                ctx.fillRect(w / 2 - underlineWidth / 2, h / 2 + 50, underlineWidth, 4);
                 ctx.restore();
 
                 try {
