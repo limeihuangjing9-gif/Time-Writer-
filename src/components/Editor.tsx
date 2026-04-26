@@ -398,7 +398,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     // object-contain will naturally pillar-box the vertical video in the UI
 
     
-    const stream = canvas.captureStream(60); 
+    const stream = canvas.captureStream(30); 
     
     const mimeTypes = [
       'video/mp4;codecs=h264',
@@ -411,7 +411,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     
     const recorder = new MediaRecorder(stream, { 
       mimeType,
-      videoBitsPerSecond: 6000000 
+      videoBitsPerSecond: 800000 
     });
     const chunks: Blob[] = [];
     recorder.ondataavailable = e => chunks.push(e.data);
@@ -428,13 +428,13 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
       canvas.height = originalH;
       setupCanvas();
     };
-    recorder.start();
+    recorder.start(1000);
 
     const ctx = canvas.getContext('2d')!;
     let exportVT = 0;
     
-    // Fixed FPS configuration
-    const FPS = 60;
+    // Fixed FPS configuration (30fps for lighter export)
+    const FPS = 30;
     const FRAME_TIME_MS = 1000 / FPS;
 
     let timeoutId: NodeJS.Timeout;
