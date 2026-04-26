@@ -269,13 +269,13 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
        // --- FINISH EFFECT: ZOOM OUT ---
        const t = (progress - 0.96) / 0.04; 
        const targetScale = Math.min((w * 0.85) / blockWidth, (h * 0.85) / Math.max(totalTextHeight, 1));
-       const startScale = isExport ? 1.65 : 0.42; 
+       const startScale = isExport ? 1.0 : 0.42; 
        scale = startScale + (targetScale - startScale) * t;
        tx = (w / 2) - (blockWidth * scale / 2);
        ty = (h / 2) - (totalTextHeight * scale / 2);
     } else {
        // --- WRITING EFFECT: FOCUS ON CURSOR ---
-       scale = isExport ? 1.65 : 0.42; 
+       scale = isExport ? 1.0 : 0.42; 
        const cursorY = cursorVisualLine * lineHeight + (lineHeight / 2);
        ty = (h / 2.5) - (cursorY * scale); // Position cursor slightly above center
        tx = (w / 2) - (blockWidth * scale / 2);
@@ -389,13 +389,14 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     
     // Save original state
     const originalW = canvas.width, originalH = canvas.height;
-    const originalSW = canvas.style.width, originalSH = canvas.style.height;
     
-    // Set fixed export resolution
-    canvas.width = 1920; 
-    canvas.height = 1080;
-    canvas.style.width = '1920px';
-    canvas.style.height = '1080px';
+    // Set fixed export resolution (9:16 Vertical format)
+    canvas.width = 1080; 
+    canvas.height = 1920;
+    
+    // Keep the CSS style intact to prevent UI layout breaking
+    // object-contain will naturally pillar-box the vertical video in the UI
+
     
     const stream = canvas.captureStream(60); 
     
@@ -425,8 +426,6 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
       // Reset canvas resolution
       canvas.width = originalW;
       canvas.height = originalH;
-      canvas.style.width = originalSW;
-      canvas.style.height = originalSH;
       setupCanvas();
     };
     recorder.start();
