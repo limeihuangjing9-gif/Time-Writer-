@@ -332,6 +332,23 @@ export function useNovelData() {
     }));
   };
 
+  const updateNovelTitle = (id: string, newTitle: string) => {
+    setNovels(prev => prev.map(n => n.id === id ? { ...n, title: newTitle, updatedAt: Date.now() } : n));
+  };
+
+  const updateEpisodeTitle = (novelId: string, episodeId: string, newTitle: string) => {
+    setNovels(prev => prev.map(n => {
+      if (n.id === novelId) {
+        return {
+          ...n,
+          updatedAt: Date.now(),
+          episodes: n.episodes.map(e => e.id === episodeId ? { ...e, title: newTitle, updatedAt: Date.now() } : e)
+        };
+      }
+      return n;
+    }));
+  };
+
   return {
     novels,
     isLoaded,
@@ -346,6 +363,8 @@ export function useNovelData() {
     swapNovels,
     swapEpisodes,
     toggleNovelPin,
-    toggleEpisodePin
+    toggleEpisodePin,
+    updateNovelTitle,
+    updateEpisodeTitle
   };
 }

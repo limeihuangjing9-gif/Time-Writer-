@@ -21,7 +21,9 @@ export default function App() {
     swapNovels,
     swapEpisodes,
     toggleNovelPin,
-    toggleEpisodePin
+    toggleEpisodePin,
+    updateNovelTitle,
+    updateEpisodeTitle
   } = useNovelData();
 
   if (!isLoaded) {
@@ -54,6 +56,7 @@ export default function App() {
           onDeleteNovel={deleteNovels}
           onSwapNovels={swapNovels}
           onTogglePin={toggleNovelPin}
+          onUpdateNovelTitle={updateNovelTitle}
         />
       )}
 
@@ -80,6 +83,8 @@ export default function App() {
               }}
               onSwapEpisodes={(idxA, idxB) => swapEpisodes(view.novelId!, idxA, idxB)}
               onTogglePin={(epId) => toggleEpisodePin(view.novelId!, epId)}
+              onUpdateNovelTitle={(newTitle) => updateNovelTitle(view.novelId!, newTitle)}
+              onUpdateEpisodeTitle={(epId, newTitle) => updateEpisodeTitle(view.novelId!, epId, newTitle)}
             />
           );
         })()
@@ -110,6 +115,7 @@ export default function App() {
               initialPlaybackLog={episode.playbackLog}
               onBack={() => handleBackToEpisodes(view.novelId!)}
               onSave={handleEditorSave}
+              onUpdateTitle={(newTitle: string) => updateEpisodeTitle(view.novelId!, view.episodeId!, newTitle)}
             />
           );
         })()

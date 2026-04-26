@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Novel } from '../types';
-import { Plus, Trash2, ChevronRight, ArrowUpDown, Check, Settings, Pin, PinOff } from 'lucide-react';
+import { Plus, Trash2, ChevronRight, ArrowUpDown, Check, Settings, Pin, PinOff, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface ShelfProps {
@@ -10,13 +10,16 @@ interface ShelfProps {
   onDeleteNovel: (ids: Set<string>) => void;
   onSwapNovels: (idxA: number, idxB: number) => void;
   onTogglePin: (id: string) => void;
+  onUpdateNovelTitle: (id: string, newTitle: string) => void;
 }
 
-export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel, onSwapNovels, onTogglePin }: ShelfProps) {
+export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel, onSwapNovels, onTogglePin, onUpdateNovelTitle }: ShelfProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [renameTarget, setRenameTarget] = useState<{id: string, title: string} | null>(null);
   const [reorderMode, setReorderMode] = useState(false);
   const [deleteMode, setDeleteMode] = useState(false);
+  const [editMode, setEditMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [swapSelectedIdx, setSwapSelectedIdx] = useState<number | null>(null);
 
@@ -59,7 +62,11 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
     }
   };
 
-  const handleItemClick = (novelId: string, index: number) => {
+  const handleItemClick = (novelId: string, index: number, title: string) => {
+    if (editMode) {
+      setRenameTarget({ id: novelId, title });
+      return;
+    }
     if (deleteMode) {
       const next = new Set(selectedIds);
       if (next.has(novelId)) next.delete(novelId);
@@ -134,22 +141,29 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
                   className="absolute right-0 top-12 w-52 bg-[#111111] border border-[#333333] rounded-2xl shadow-xl shadow-black/50 z-50 overflow-hidden flex flex-col py-1"
                 >
                   <button 
-                    onClick={() => { setIsModalOpen(true); setIsMenuOpen(false); }}
+                    onClick={() => { setIsModalOpen(true); setIsMenuOpen(false); setEditMode(false); }}
                     className="flex text-left items-center gap-3 px-4 py-3 text-sm font-bold text-neutral-200 hover:bg-white/10 transition-colors"
                   >
                     <Plus size={16} className="text-white" strokeWidth={3} />
                     新規プロジェクト
                   </button>
+                  <button 
+                    onClick={() => { setEditMode(!editMode); setIsMenuOpen(false); setReorderMode(false); setDeleteMode(false); }}
+                    className={`flex text-left items-center gap-3 px-4 py-3 text-sm font-bold transition-colors ${editMode ? 'bg-indigo-500/20 text-indigo-400' : 'text-neutral-300 hover:bg-white/10'}`}
+                  >
+                    <Edit2 size={16} className={editMode ? 'text-indigo-400' : 'text-white'} strokeWidth={3} />
+                    現在のプロジェクト名を変更
+                  </button>
                   <div className="h-[1px] w-full bg-[#222222] my-1" />
                   <button 
-                    onClick={() => { setReorderMode(!reorderMode); setIsMenuOpen(false); setSwapSelectedIdx(null); }}
+                    onClick={() => { setReorderMode(!reorderMode); setIsMenuOpen(false); setSwapSelectedIdx(null); setDeleteMode(false); setEditMode(false); }}
                     className={`flex text-left items-center gap-3 px-4 py-3 text-sm font-bold transition-colors ${reorderMode ? 'bg-indigo-500/20 text-indigo-400' : 'text-neutral-300 hover:bg-white/10'}`}
                   >
                     <ArrowUpDown size={16} className={reorderMode ? 'text-indigo-400' : 'text-neutral-500'} />
                     並び替えモード
                   </button>
                   <button 
-                    onClick={() => { setDeleteMode(true); setReorderMode(false); setIsMenuOpen(false); setSelectedIds(new Set()); }}
+                    onClick={() => { setDeleteMode(true); setReorderMode(false); setIsMenuOpen(false); setSelectedIds(new Set()); setEditMode(false); }}
                     className="flex text-left items-center gap-3 px-4 py-3 text-sm font-bold text-neutral-300 hover:bg-white/10 hover:text-red-400 transition-colors group"
                   >
                     <Trash2 size={16} className="text-neutral-500 group-hover:text-red-400 transition-colors" />
@@ -175,14 +189,14 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
         </div>
       )}
 
-      {(!deleteMode && !reorderMode) && (
+      {(!deleteMode && !reorderMode && !editMode) && (
         <div className="h-[1px] w-full bg-[#222222] mb-3 shadow-none hidden" />
       )}
 
-      {(reorderMode || deleteMode) && (
+      {(reorderMode || deleteMode || editMode) && (
         <div className="mb-6 py-2 px-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
           <p className="text-[9px] text-indigo-400 font-bold uppercase tracking-widest text-center">
-            {deleteMode ? "削除する作品を選択してください" : swapSelectedIdx === null ? "入れ替える作品を1つ選んでください" : "入れ換え先の作品を選んでください"}
+            {editMode ? "名前を変更する作品を選択してください" : deleteMode ? "削除する作品を選択してください" : swapSelectedIdx === null ? "入れ替える作品を1つ選んでください" : "入れ換え先の作品を選んでください"}
           </p>
         </div>
       )}
@@ -203,8 +217,10 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
                   isSelected={deleteMode ? selectedIds.has(novel.id) : (reorderMode && swapSelectedIdx === originalIndex)}
                   reorderMode={reorderMode}
                   deleteMode={deleteMode}
-                  onClick={() => handleItemClick(novel.id, originalIndex)}
+                  editMode={editMode}
+                  onClick={() => handleItemClick(novel.id, originalIndex, novel.title)}
                   onTogglePin={() => onTogglePin(novel.id)}
+                  onUpdateTitle={(newTitle) => onUpdateNovelTitle(novel.id, newTitle)}
                 />
               );
             })}
@@ -221,6 +237,38 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
               <div className="flex gap-4">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="flex-1 py-3 text-[10px] text-neutral-500 font-black uppercase tracking-[0.2em]">Cancel</button>
                 <button type="submit" className="flex-1 py-3 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] active:scale-95 transition-transform">Create</button>
+              </div>
+            </motion.form>
+          </motion.div>
+        )}
+
+        {renameTarget && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/90 backdrop-blur-3xl z-[100] flex items-center justify-center p-6">
+            <motion.form 
+              initial={{ scale: 0.9, opacity: 0 }} 
+              animate={{ scale: 1, opacity: 1 }} 
+              exit={{ scale: 0.9, opacity: 0 }} 
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (renameTarget.title.trim()) {
+                  onUpdateNovelTitle(renameTarget.id, renameTarget.title.trim());
+                }
+                setRenameTarget(null);
+                setEditMode(false);
+              }} 
+              className="w-full max-w-sm bg-neutral-900 p-8 rounded-[40px] border border-white/10 shadow-2xl"
+            >
+              <h2 className="text-lg font-black text-white mb-6 tracking-tight text-center">プロジェクト名を変更</h2>
+              <input 
+                autoFocus 
+                type="text" 
+                value={renameTarget.title} 
+                onChange={(e) => setRenameTarget({...renameTarget, title: e.target.value})} 
+                className="w-full bg-black border border-white/10 rounded-2xl p-4 text-white outline-none focus:border-indigo-500 transition-all mb-6 font-sans text-center text-base font-bold" 
+              />
+              <div className="flex gap-4">
+                <button type="button" onClick={() => { setRenameTarget(null); setEditMode(false); }} className="flex-1 py-3 text-[10px] text-neutral-500 font-black uppercase tracking-[0.2em]">Cancel</button>
+                <button type="submit" className="flex-1 py-3 bg-white text-black rounded-2xl text-[10px] font-black uppercase tracking-[0.2em] active:scale-95 transition-transform">Save</button>
               </div>
             </motion.form>
           </motion.div>
@@ -261,17 +309,19 @@ interface CardProps {
   isSelected: boolean;
   reorderMode: boolean;
   deleteMode: boolean;
+  editMode: boolean;
   onClick: () => void;
   onTogglePin: () => void;
+  onUpdateTitle: (newTitle: string) => void;
   key?: React.Key;
 }
 
-function ProjectCard({ novel, isSelected, reorderMode, deleteMode, onClick, onTogglePin }: CardProps) {
+function ProjectCard({ novel, isSelected, reorderMode, deleteMode, editMode, onClick, onTogglePin, onUpdateTitle }: CardProps) {
   return (
     <motion.div
       layout
       whileTap={{ scale: 0.98 }}
-      onTap={onClick}
+      onClick={() => onClick()}
       className={`relative z-10 p-4 rounded-[20px] flex justify-between items-center group transition-all cursor-pointer select-none border \
         ${isSelected ? (deleteMode ? 'border-red-500 bg-red-500/10' : 'border-indigo-500 bg-indigo-500/10') : 'bg-[#1C1C1E] border-[#444444] shadow-lg shadow-black/50 hover:border-[#666666] hover:bg-[#222222]'}`}
     >
@@ -281,7 +331,12 @@ function ProjectCard({ novel, isSelected, reorderMode, deleteMode, onClick, onTo
             {isSelected && <Check size={10} className="text-white" strokeWidth={4} />}
           </div>
         )}
-        <div className="flex-1">
+        {editMode && !deleteMode && (
+          <div className="w-4 h-4 flex items-center justify-center transition-all text-neutral-400">
+            <Edit2 size={14} className="text-indigo-400" />
+          </div>
+        )}
+        <div className="flex-1 pointer-events-auto">
           <div className="flex items-center gap-2 mb-1">
             <span className={`text-[7px] font-black tracking-[0.2em] px-1.5 py-0.5 rounded transition-colors ${isSelected ? (deleteMode ? 'bg-red-500 text-white' : 'bg-indigo-500 text-white') : 'bg-indigo-500/10 text-indigo-400'}`}>PROJECT</span>
             <span className="text-[7px] text-neutral-500 font-bold tracking-widest">{novel.id.slice(0, 8).toUpperCase()}</span>
@@ -289,8 +344,14 @@ function ProjectCard({ novel, isSelected, reorderMode, deleteMode, onClick, onTo
               <Pin size={10} className="text-indigo-300 fill-indigo-300" />
             )}
           </div>
-          <h3 className="text-base font-bold tracking-tight text-neutral-100 line-clamp-1 leading-snug">{novel.title}</h3>
-          <div className="flex items-center gap-3 mt-2">
+          
+          <div className="flex items-center gap-2 group/title">
+            <h3 className="text-base font-bold tracking-tight text-neutral-100 line-clamp-1 leading-snug">
+              {novel.title}
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-3 mt-2 pointer-events-none">
             <div className="flex items-center gap-1.5">
               <div className="w-1 h-1 bg-green-500/80 rounded-full animate-pulse" />
               <span className="text-[8px] text-neutral-300 font-black uppercase tracking-widest">{novel.episodes.length} Episodes</span>
@@ -302,7 +363,7 @@ function ProjectCard({ novel, isSelected, reorderMode, deleteMode, onClick, onTo
           </div>
         </div>
       </div>
-      {!deleteMode && !reorderMode && (
+      {!deleteMode && !reorderMode && !editMode && (
         <div className="flex items-center gap-2">
           <button 
             onClick={(e) => { e.stopPropagation(); onTogglePin(); }}
