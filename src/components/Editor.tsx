@@ -18,7 +18,7 @@ interface EditorProps {
   onSave: (content: string, playbackLog: PlaybackEntry[]) => void;
 }
 
-const VERSION = '1.6.2';
+const VERSION = '1.6.3';
 
 export default function Editor({ title, initialContent, initialPlaybackLog, onBack, onSave }: EditorProps) {
   const [content, setContent] = useState(initialContent);
@@ -768,19 +768,6 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                <span className="text-[8px] font-bold tracking-widest text-neutral-600 uppercase">Manuscript</span>
                <div className="flex items-center gap-3">
                  <h1 className="text-sm font-bold truncate max-w-[150px]">{title}</h1>
-                 <AnimatePresence>
-                   {showSavedIndicator && (
-                     <motion.span 
-                       initial={{ opacity: 0, x: -5 }}
-                       animate={{ opacity: 1, x: 0 }}
-                       exit={{ opacity: 0, x: -5 }}
-                       className="text-[8px] font-bold text-green-500 tracking-widest flex items-center gap-1"
-                     >
-                       <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
-                       SAVED
-                     </motion.span>
-                   )}
-                 </AnimatePresence>
                </div>
              </div>
           </div>
@@ -789,7 +776,20 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
               <span className="text-[7px] font-bold text-neutral-600 tracking-widest uppercase mb-0.5">CHARS</span>
               <span className="text-[11px] font-mono font-bold text-neutral-400">{content.replace(/[\s　]/g, '').length.toLocaleString()}</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 relative">
+              <AnimatePresence>
+                {showSavedIndicator && (
+                  <motion.span 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 5 }}
+                    className="absolute -top-4 right-2 text-[8px] font-bold text-green-500 tracking-widest flex items-center gap-1 whitespace-nowrap"
+                  >
+                    <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
+                    SAVED
+                  </motion.span>
+                )}
+              </AnimatePresence>
               <button onClick={() => { onSave(content, playbackLogRef.current); setShowSavedIndicator(true); setTimeout(() => setShowSavedIndicator(false), 2000); }} className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 rounded-full text-[10px] font-bold tracking-[0.2em] flex items-center gap-2 active:scale-95 transition-all text-white shadow-lg shadow-indigo-600/20">
                  <Save size={14} className="text-white" /> SAVE
               </button>
