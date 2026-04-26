@@ -1,225 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { ArrowLeft, Play, X, Download, Undo2, Redo2, Clock, Save, Copy, Settings, ChevronDown, BookOpenText, Pause, RotateCcw, Monitor, Share2, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-const workerCode = `
-import { Muxer, ArrayBufferTarget } from 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.0.2/+esm';
-
-const renderFrame = (ctx, entry, progress, w, h) => {
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    
-    ctx.fillStyle = '#0a0a0b'; 
-    ctx.fillRect(0, 0, w, h);
-
-    ctx.save();
-    const grad1 = ctx.createRadialGradient(w * 0.25, 0, 0, w * 0.25, 0, w * 0.8);
-    grad1.addColorStop(0, 'rgba(79, 70, 229, 0.12)'); 
-    grad1.addColorStop(1, 'transparent');
-    ctx.fillStyle = grad1;
-    ctx.fillRect(0, 0, w, h);
-
-    const grad2 = ctx.createRadialGradient(w * 0.75, h, 0, w * 0.75, h, w * 0.8);
-    grad2.addColorStop(0, 'rgba(245, 158, 11, 0.04)'); 
-    grad2.addColorStop(1, 'transparent');
-    ctx.fillStyle = grad2;
-    ctx.fillRect(0, 0, w, h);
-    ctx.restore();
-
-    if (!entry) return;
-
-    const logicalLines = entry.c.split('\\n');
-    const visualLines = [];
-    let cursorVisualLine = 0;
-    let cursorVisualCol = 0;
-    let charCount = 0;
-
-    logicalLines.forEach((l) => {
-        const segments = [];
-        const chars = Array.from(l);
-        if (chars.length === 0) {
-            segments.push("");
-        } else {
-            for (let i = 0; i < chars.length; i += 26) {
-                segments.push(chars.slice(i, i + 26).join(''));
-            }
-        }
-
-        segments.forEach((seg) => {
-            const startOfSeg = charCount;
-            const endOfSeg = charCount + seg.length;
-            
-            if (entry.p >= startOfSeg && entry.p <= endOfSeg) {
-                cursorVisualLine = visualLines.length;
-                const textBeforeCursor = seg.substring(0, entry.p - startOfSeg);
-                cursorVisualCol = Array.from(textBeforeCursor).length;
-            }
-            
-            visualLines.push(seg);
-            charCount += seg.length;
-        });
-        charCount += 1;
-    });
-
-    const charSize = 32; 
-    const lineHeight = charSize * 1.6;
-    const blockWidth = 26 * charSize;
-    const totalTextHeight = visualLines.length * lineHeight;
-    
-    let scale = 1.0; 
-    let tx = 0, ty = 0;
-
-    if (progress > 0.96) {
-       const t = (progress - 0.96) / 0.04; 
-       const targetScale = Math.min((w * 0.85) / blockWidth, (h * 0.85) / Math.max(totalTextHeight, 1), 1.0);
-       const startScale = Math.min((w * 0.85) / blockWidth, 1.0); 
-       scale = startScale + (targetScale - startScale) * t;
-       tx = (w / 2) - (blockWidth * scale / 2);
-       ty = (h / 2) - (totalTextHeight * scale / 2);
-    } else {
-       scale = Math.min((w * 0.85) / blockWidth, 1.0); 
-       const cursorY = cursorVisualLine * lineHeight + (lineHeight / 2);
-       ty = (h / 2.5) - (cursorY * scale); 
-       tx = (w / 2) - (blockWidth * scale / 2);
-    }
-
-    ctx.save();
-    ctx.translate(tx, ty);
-    ctx.scale(scale, scale);
-
-    ctx.font = \`bold \${charSize}px "BIZ UDMincho Mono", "MS Mincho", monospace, serif\`;
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#FFFFFF';
-    
-    visualLines.forEach((line, i) => {
-       const chars = Array.from(line);
-       for (let j = 0; j < chars.length; j++) {
-           ctx.fillText(chars[j], j * charSize, i * lineHeight);
-       }
-    });
-
-    if (progress <= 0.96) {
-       ctx.fillStyle = '#6366f1';
-       ctx.fillRect(cursorVisualCol * charSize, cursorVisualLine * lineHeight, 3, charSize);
-    }
-    ctx.restore();
-};
-
-self.onmessage = async (e) => {
-  try {
-    const { playbackLog, playbackSpeed, title } = e.data;
-    const safeLog = playbackLog && playbackLog.length > 0 ? playbackLog : [{ t: 0, c: '', p: 0 }];
-    
-    const processedLog = [];
-    let lastRealT = safeLog[0].t;
-    let virtualT = 0;
-    safeLog.forEach((entry) => {
-        const delta = entry.t - lastRealT;
-        const jumpValue = delta > 500 ? 100 : delta;
-        virtualT += jumpValue;
-        processedLog.push({...entry, t: virtualT});
-        lastRealT = entry.t;
-    });
-    
-    const _totalDuration = processedLog.length > 0 ? processedLog[processedLog.length - 1].t : 0;
-    const totalDuration = Math.max(1000, _totalDuration);
-    const FPS = 30;
-    
-    const w = 720;
-    const h = 1280;
-
-    const muxer = new Muxer({
-      target: new ArrayBufferTarget(),
-      video: {
-        codec: 'avc',
-        width: w,
-        height: h
-      },
-      fastStart: 'in-memory'
-    });
-
-    const videoEncoder = new VideoEncoder({
-      output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-      error: (e) => { console.error('VideoEncoder error:', e); self.postMessage({ type: 'error', error: e.message }); }
-    });
-
-    videoEncoder.configure({
-      codec: 'avc1.420028',
-      width: w,
-      height: h,
-      bitrate: 2_000_000, 
-      framerate: FPS
-    });
-
-    const offscreen = new OffscreenCanvas(w, h);
-    const ctx = offscreen.getContext('2d', { alpha: false, desynchronized: true });
-
-    let exportVT = 0;
-    let videoTime = 0;
-    const VIDEO_FRAME_DUR = 1000 / Math.max(1, FPS);
-    const VT_STEP = VIDEO_FRAME_DUR * Math.max(0.1, playbackSpeed);
-    let framesEncoded = 0;
-    let loops = 0;
-    
-    let lastEntryIndex = -1;
-
-    if (videoEncoder.state === 'unconfigured') {
-        throw new Error('VideoEncoder configuration failed');
-    }
-
-    while (exportVT <= totalDuration) {
-      const progress = exportVT / totalDuration;
-      const entry = processedLog.find((e) => e.t >= exportVT) || processedLog[processedLog.length - 1];
-      const entryIndex = processedLog.indexOf(entry);
-      
-      const isVisualChange = progress > 0.96 || entryIndex !== lastEntryIndex;
-
-      if (isVisualChange) {
-          renderFrame(ctx, entry, progress, w, h);
-          lastEntryIndex = entryIndex;
-          
-          const frame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
-          videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
-          frame.close();
-          framesEncoded++;
-      }
-
-      exportVT += VT_STEP;
-      videoTime += VIDEO_FRAME_DUR;
-      loops++;
-
-      if (loops % 30 === 0) {
-         self.postMessage({ type: 'progress', progress: Math.min(99, (exportVT / totalDuration) * 100) });
-         await new Promise(r => setTimeout(r, 0));
-         
-         while (videoEncoder.encodeQueueSize > 60) {
-            await new Promise(r => setTimeout(r, 10));
-         }
-      }
-    }
-
-    if (processedLog.length > 0) {
-      renderFrame(ctx, processedLog[processedLog.length - 1], 1, w, h);
-      const finalFrame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
-      videoEncoder.encode(finalFrame, { keyFrame: true });
-      finalFrame.close();
-    }
-
-    await videoEncoder.flush();
-    muxer.finalize();
-
-    const buffer = muxer.target.buffer;
-    const blob = new Blob([buffer], { type: 'video/mp4' });
-    
-    const filename = \`\${title || 'timelapse'}_\${new Date().getTime()}.mp4\`;
-    
-    self.postMessage({ type: 'done', blob, filename, mimeType: 'video/mp4' });
-  } catch (error) {
-    self.postMessage({ type: 'error', error: error.message });
-  }
-};
-`;
-
-const workerBlob = new Blob([workerCode], { type: 'application/javascript' });
-const workerUrl = URL.createObjectURL(workerBlob);
+import { Muxer, ArrayBufferTarget } from 'mp4-muxer';
 
 interface PlaybackEntry {
   c: string; // content
@@ -261,6 +43,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
   const animationRef = useRef<number>();
   const lastTimeRef = useRef<number>(0);
   const saveTimeoutRef = useRef<NodeJS.Timeout>();
+  const exportCanceledRef = useRef<boolean>(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -603,23 +386,134 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     setIsPaused(true);
     setExportProgress(0);
     setExportResult(null);
+    exportCanceledRef.current = false;
 
-    const worker = new Worker(workerUrl, { type: 'module' });
+    try {
+        const playbackLog = playbackLogRef.current;
+        const safeLog = playbackLog && playbackLog.length > 0 ? playbackLog : [{ t: 0, c: '', p: 0 }];
+    
+        const processedLog: PlaybackEntry[] = [];
+        let lastRealT = safeLog[0].t;
+        let virtualT = 0;
+        safeLog.forEach((entry) => {
+            const delta = entry.t - lastRealT;
+            const jumpValue = delta > 500 ? 100 : delta;
+            virtualT += jumpValue;
+            processedLog.push({...entry, t: virtualT});
+            lastRealT = entry.t;
+        });
+        
+        const _totalDuration = processedLog.length > 0 ? processedLog[processedLog.length - 1].t : 0;
+        const totalDuration = Math.max(1000, _totalDuration);
+        const FPS = 30;
+        
+        const w = 720;
+        const h = 1280;
 
-    worker.onmessage = (e) => {
-      const msg = e.data;
-      if (msg.type === 'progress') {
-        setExportProgress(Math.min(99, msg.progress)); // Cap at 99 until done
-      } else if (msg.type === 'done') {
-        setExportResult({ blob: msg.blob, filename: msg.filename, mimeType: msg.mimeType });
+        const muxer = new Muxer({
+            target: new ArrayBufferTarget(),
+            video: {
+                codec: 'avc',
+                width: w,
+                height: h
+            },
+            fastStart: 'in-memory'
+        });
+
+        const videoEncoder = new VideoEncoder({
+            output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+            error: (e) => { console.error('VideoEncoder error:', e); throw e; }
+        });
+
+        videoEncoder.configure({
+            codec: 'avc1.4d0032', // More compatible profile for mobile Main Profile Level 5.0
+            width: w,
+            height: h,
+            bitrate: 2_000_000, 
+            framerate: FPS
+        });
+
+        const offscreen = new OffscreenCanvas(w, h);
+        const ctx = offscreen.getContext('2d', { alpha: false, desynchronized: true }) as OffscreenCanvasRenderingContext2D;
+
+        let exportVT = 0;
+        let videoTime = 0;
+        const VIDEO_FRAME_DUR = 1000 / Math.max(1, FPS);
+        const VT_STEP = VIDEO_FRAME_DUR * Math.max(0.1, playbackSpeed);
+        let framesEncoded = 0;
+        let loops = 0;
+        
+        let lastEntryIndex = -1;
+
+        if (videoEncoder.state === 'unconfigured') {
+            throw new Error('VideoEncoder configuration failed');
+        }
+
+        const yieldToMain = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+        while (exportVT <= totalDuration) {
+            if (exportCanceledRef.current) {
+                muxer.finalize(); // Attempt to close cleanly, or just break
+                setIsExporting(false);
+                return;
+            }
+
+            const progress = exportVT / totalDuration;
+            const entry = processedLog.find((e) => e.t >= exportVT) || processedLog[processedLog.length - 1];
+            const entryIndex = processedLog.indexOf(entry);
+            
+            const isVisualChange = progress > 0.96 || entryIndex !== lastEntryIndex;
+
+            if (isVisualChange) {
+                renderFrame(ctx as unknown as CanvasRenderingContext2D, entry, progress, true);
+                lastEntryIndex = entryIndex;
+                
+                const frame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
+                videoEncoder.encode(frame, { keyFrame: framesEncoded % 60 === 0 });
+                frame.close();
+                framesEncoded++;
+            }
+
+            exportVT += VT_STEP;
+            videoTime += VIDEO_FRAME_DUR;
+            loops++;
+
+            if (loops % 30 === 0) {
+                setExportProgress(Math.min(99, (exportVT / totalDuration) * 100));
+                
+                await yieldToMain(); // Yield to React
+                
+                while (videoEncoder.encodeQueueSize > 60) {
+                    await new Promise(r => setTimeout(r, 10)); // Slow down backpressure
+                }
+            }
+        }
+
+        if (processedLog.length > 0) {
+            renderFrame(ctx as unknown as CanvasRenderingContext2D, processedLog[processedLog.length - 1], 1, true);
+            const finalFrame = new VideoFrame(offscreen, { timestamp: Math.round(videoTime * 1000) });
+            videoEncoder.encode(finalFrame, { keyFrame: true });
+            finalFrame.close();
+        }
+
+        setExportProgress(99.9);
+        await yieldToMain();
+        await videoEncoder.flush();
+        muxer.finalize();
+
+        const buffer = muxer.target.buffer;
+        const blob = new Blob([buffer], { type: 'video/mp4' });
+        const filename = `${title || 'timelapse'}_${new Date().getTime()}.mp4`;
+        const mimeType = 'video/mp4';
+
         setExportProgress(100);
-        worker.terminate();
+        setExportResult({ blob, filename, mimeType });
 
         const doDownload = () => {
-            const url = URL.createObjectURL(msg.blob);
+            const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = msg.filename;
+            a.download = filename;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -627,7 +521,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
         };
 
         if (mode === 'share' && navigator.share) {
-            const file = new File([msg.blob], msg.filename, { type: msg.mimeType });
+            const file = new File([blob], filename, { type: mimeType });
             navigator.share({
                 title: title,
                 files: [file]
@@ -638,30 +532,15 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                 setTimeout(() => { setIsExporting(false); setExportResult(null); }, 1500);
             });
         } else {
-            // 3. 自動ダウンロードの実行
             doDownload();
             setTimeout(() => { setIsExporting(false); setExportResult(null); }, 1500);
         }
-      } else if (msg.type === 'error') {
-        console.error('Export Error:', msg.error);
+
+    } catch (error: any) {
+        console.error('Export Error:', error);
         setIsExporting(false);
-        worker.terminate();
-        alert('動画生成中にエラーが発生しました: ' + msg.error);
-      }
-    };
-
-    worker.onerror = (e) => {
-      console.error('Worker Error:', e);
-      setIsExporting(false);
-      worker.terminate();
-      alert('動画生成ワーカーの起動に失敗しました。');
-    };
-
-    worker.postMessage({
-      playbackLog: playbackLogRef.current,
-      playbackSpeed,
-      title
-    });
+        alert('動画生成中にエラーが発生しました: ' + error.message);
+    }
   };
 
   const finalizeShare = async () => {
@@ -821,6 +700,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                            <div className="w-48 h-1.5 bg-white/5 rounded-full overflow-hidden mt-2">
                              <div className="h-full bg-indigo-500 transition-all duration-300" style={{ width: `${exportProgress}%` }} />
                            </div>
+                           <button onClick={() => { exportCanceledRef.current = true; setIsExporting(false); setExportResult(null); }} className="mt-4 text-[10px] text-neutral-600 hover:text-white transition-colors uppercase tracking-widest font-bold">CANCEL</button>
                          </>
                        ) : (
                          <div className="flex flex-col items-center gap-8 animate-fade-in">
@@ -839,7 +719,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                                  <Download size={18} /> DOWNLOAD
                                </button>
                             </div>
-                            <button onClick={() => { setIsExporting(false); setExportResult(null); }} className="mt-4 text-[10px] text-neutral-600 hover:text-white transition-colors uppercase tracking-widest font-bold">CANCEL</button>
+                            <button onClick={() => { exportCanceledRef.current = true; setIsExporting(false); setExportResult(null); }} className="mt-4 text-[10px] text-neutral-600 hover:text-white transition-colors uppercase tracking-widest font-bold">CANCEL</button>
                          </div>
                        )}
                     </div>
