@@ -82,14 +82,14 @@ const renderFrame = (ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingCon
     if (progress > 0.96) {
        // --- FINISH EFFECT: ZOOM OUT ---
        const t = (progress - 0.96) / 0.04; 
-       const targetScale = Math.min((w * 0.85) / blockWidth, (h * 0.85) / Math.max(totalTextHeight, 1));
-       const startScale = 1.0; 
+       const targetScale = Math.min((w * 0.85) / blockWidth, (h * 0.85) / Math.max(totalTextHeight, 1), 1.0);
+       const startScale = Math.min((w * 0.85) / blockWidth, 1.0); 
        scale = startScale + (targetScale - startScale) * t;
        tx = (w / 2) - (blockWidth * scale / 2);
        ty = (h / 2) - (totalTextHeight * scale / 2);
     } else {
        // --- WRITING EFFECT: FOCUS ON CURSOR ---
-       scale = 1.0; 
+       scale = Math.min((w * 0.85) / blockWidth, 1.0); 
        const cursorY = cursorVisualLine * lineHeight + (lineHeight / 2);
        ty = (h / 2.5) - (cursorY * scale); // Position cursor slightly above center
        tx = (w / 2) - (blockWidth * scale / 2);

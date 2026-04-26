@@ -99,9 +99,12 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
   return (
     <div className="min-h-screen p-4 sm:p-6 pt-6 sm:pt-8 animate-fade-in relative z-10">
       <header className="mb-4 flex justify-between items-start relative z-30">
-        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex flex-[0_0_auto] flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3">
-          <span className="font-sans italic pr-1">Time<span className="text-indigo-500">×</span>Writer</span>
-          <span className="text-sm sm:text-base font-serif font-bold text-neutral-400">タイム×ライター</span>
+        <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex flex-[0_0_auto] flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 relative">
+          <div className="flex items-baseline relative">
+            <span className="font-sans italic pr-1">Time<span className="text-indigo-500">×</span>Writer</span>
+            <span className="text-[10px] font-mono text-neutral-500 absolute -right-6 -bottom-1">v1.0</span>
+          </div>
+          <span className="text-sm sm:text-base font-serif font-bold text-neutral-400 sm:ml-4">タイム×ライター</span>
         </h1>
         <div className="relative">
           {!deleteMode && (

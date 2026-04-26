@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useLayoutEffect, useMemo } from 'react';
 import { ArrowLeft, Play, X, Download, Undo2, Redo2, Clock, Save, Copy, Settings, ChevronDown, BookOpenText, Pause, RotateCcw, Monitor, Share2, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import ExportWorker from '../workers/exportWorker?worker&inline';
 
 interface PlaybackEntry {
   c: string; // content
@@ -385,7 +386,7 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     setExportProgress(0);
     setExportResult(null);
 
-    const worker = new Worker(new URL('../workers/exportWorker.ts', import.meta.url), { type: 'module' });
+    const worker = new ExportWorker();
 
     worker.onmessage = (e) => {
       const msg = e.data;
