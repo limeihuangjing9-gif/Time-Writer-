@@ -102,7 +102,7 @@ export default function Shelf({ novels, onSelectNovel, onAddNovel, onDeleteNovel
         <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white flex flex-[0_0_auto] flex-col sm:flex-row sm:items-baseline gap-1 sm:gap-3 relative">
           <div className="flex items-baseline relative">
             <span className="font-sans italic pr-1">Time<span className="text-indigo-500">×</span>Writer</span>
-            <span className="text-[10px] font-mono text-neutral-500 absolute -right-6 -bottom-1">v1.4</span>
+            <span className="text-[10px] font-mono text-neutral-500 absolute -right-6 -bottom-1">v1.5</span>
           </div>
           <span className="text-sm sm:text-base font-serif font-bold text-neutral-400 sm:ml-4">タイム×ライター</span>
         </h1>

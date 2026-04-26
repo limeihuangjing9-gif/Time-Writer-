@@ -37,6 +37,9 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
   const [isPaused, setIsPaused] = useState(true);
   const [isFinished, setIsFinished] = useState(false);
   const [toast, setToast] = useState('');
+  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [exportRangeMode, setExportRangeMode] = useState<{show: boolean, type: 'download' | 'share' | null}>({ show: false, type: null });
   
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -83,6 +86,8 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     saveTimeoutRef.current = setTimeout(() => {
       onSave(content, playbackLogRef.current);
+      setShowSavedIndicator(true);
+      setTimeout(() => setShowSavedIndicator(false), 2000);
     }, 1500); // 1.5 seconds debounce
     
     return () => {
@@ -381,16 +386,35 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
 
   const [exportResult, setExportResult] = useState<{ blob: Blob; filename: string; mimeType: string } | null>(null);
 
-  const runExport = async (mode: 'download' | 'share' = 'download') => {
+  const runExport = async (mode: 'download' | 'share' = 'download', range: 'all' | 'recent100' | 'today' = 'all') => {
     setIsExporting(true);
+    setExportRangeMode({ show: false, type: null }); // Close range modal
     setIsPaused(true);
     setExportProgress(0);
     setExportResult(null);
     exportCanceledRef.current = false;
 
     try {
-        const playbackLog = playbackLogRef.current;
-        const safeLog = playbackLog && playbackLog.length > 0 ? playbackLog : [{ t: 0, c: '', p: 0 }];
+        let playbackLog = playbackLogRef.current;
+        
+        if (range === 'recent100' && playbackLog.length > 0) {
+           const finalLen = playbackLog[playbackLog.length - 1].c.length;
+           const targetLen = Math.max(0, finalLen - 100);
+           const startIdx = playbackLog.findIndex(e => e.c.length >= targetLen);
+           if (startIdx !== -1) {
+              playbackLog = playbackLog.slice(startIdx);
+           }
+        } else if (range === 'today' && playbackLog.length > 0) {
+           const today = new Date();
+           today.setHours(0,0,0,0);
+           const startOfToday = today.getTime();
+           const startIdx = playbackLog.findIndex(e => e.t >= startOfToday);
+           if (startIdx !== -1) {
+              playbackLog = playbackLog.slice(startIdx);
+           }
+        }
+
+        const safeLog = playbackLog && playbackLog.length > 0 ? playbackLog : [{ t: Date.now(), c: '', p: 0 }];
     
         const processedLog: PlaybackEntry[] = [];
         let lastRealT = safeLog[0].t;
@@ -609,6 +633,17 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
     setExportResult(null);
   };
 
+  const handleBackupText = () => {
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${title || 'backup'}_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setShowSettings(false);
+  };
+
   return (
     <div className="bg-[#0b0b0d] min-h-screen flex flex-col items-center w-full overflow-hidden text-neutral-300">
       <AnimatePresence>
@@ -632,12 +667,28 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
              </div>
           </div>
           <div className="flex items-center gap-3">
-            <div className="flex flex-col items-end mr-1">
+            <div className="flex flex-col items-end mr-1 relative">
+              <AnimatePresence>
+                {showSavedIndicator && (
+                  <motion.span 
+                    initial={{ opacity: 0, y: 5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="absolute -top-4 right-0 text-[8px] font-bold text-green-500 tracking-widest flex items-center gap-1"
+                  >
+                    <span className="w-1 h-1 bg-green-500 rounded-full animate-pulse" />
+                    SAVED
+                  </motion.span>
+                )}
+              </AnimatePresence>
               <span className="text-[7px] font-bold text-neutral-600 tracking-widest uppercase mb-0.5">CHARS</span>
               <span className="text-[11px] font-mono font-bold text-neutral-400">{content.length.toLocaleString()}</span>
             </div>
-            <button onClick={() => { onSave(content, playbackLogRef.current); showToast('SAVED'); }} className="px-5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] font-bold tracking-widest flex items-center gap-2 active:scale-95 transition-all">
+            <button onClick={() => { onSave(content, playbackLogRef.current); setShowSavedIndicator(true); setTimeout(() => setShowSavedIndicator(false), 2000); }} className="px-5 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full text-[10px] font-bold tracking-widest flex items-center gap-2 active:scale-95 transition-all">
                <Save size={14} className="text-indigo-400" /> SAVE
+            </button>
+            <button onClick={() => setShowSettings(!showSettings)} className="w-10 h-10 rounded-full hover:bg-white/5 flex items-center justify-center text-neutral-500 transition-colors">
+              <Settings size={20} />
             </button>
           </div>
         </div>
@@ -708,10 +759,10 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
                </div>
 
                 <div className="flex items-center gap-2">
-                  <button onClick={() => runExport('share')} disabled={isExporting} title="SNSへ共有" className="w-12 h-12 rounded-full hover:bg-white/5 flex items-center justify-center text-indigo-400 disabled:opacity-20 transition-all">
+                  <button onClick={() => setExportRangeMode({ show: true, type: 'share' })} disabled={isExporting} title="SNSへ共有" className="w-12 h-12 rounded-full hover:bg-white/5 flex items-center justify-center text-indigo-400 disabled:opacity-20 transition-all">
                     <Share2 size={30} />
                   </button>
-                  <button onClick={() => runExport('download')} disabled={isExporting} title="ダウンロード" className="w-12 h-12 rounded-full hover:bg-white/5 flex items-center justify-center text-indigo-400 disabled:opacity-20 transition-all">
+                  <button onClick={() => setExportRangeMode({ show: true, type: 'download' })} disabled={isExporting} title="ダウンロード" className="w-12 h-12 rounded-full hover:bg-white/5 flex items-center justify-center text-indigo-400 disabled:opacity-20 transition-all">
                     <Download size={32} />
                   </button>
                 </div>
@@ -822,6 +873,73 @@ export default function Editor({ title, initialContent, initialPlaybackLog, onBa
         }
         input[type='range']::-webkit-slider-thumb:hover { transform: scale(1.2); }
       `}</style>
+      {/* --- SETTINGS MENU --- */}
+      <AnimatePresence>
+        {showSettings && (
+          <>
+            <div className="fixed inset-0 z-[60]" onClick={() => setShowSettings(false)} />
+            <motion.div 
+              initial={{ opacity: 0, y: -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.95 }}
+              className="fixed right-6 top-16 w-52 bg-[#111111] border border-[#333333] rounded-2xl shadow-2xl z-[70] overflow-hidden flex flex-col py-1"
+            >
+              <button 
+                onClick={handleBackupText}
+                className="flex text-left items-center gap-3 px-4 py-3 text-sm font-bold text-neutral-200 hover:bg-white/10 transition-colors"
+              >
+                <Download size={16} className="text-white" />
+                テキストバックアップ
+              </button>
+              <div className="px-4 py-2 text-[9px] text-neutral-500 font-bold uppercase tracking-widest border-t border-white/5">
+                Version 1.5
+              </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* --- EXPORT RANGE MODAL --- */}
+      <AnimatePresence>
+        {exportRangeMode.show && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="w-full max-w-xs bg-[#111111] border border-white/10 rounded-[32px] p-8 shadow-2xl"
+            >
+              <h3 className="text-sm font-black text-white text-center mb-6 tracking-[0.2em] uppercase">書き出し範囲を選択</h3>
+              <div className="flex flex-col gap-3">
+                {[
+                  { label: '全文', value: 'all' as const },
+                  { label: '直近の100文字', value: 'recent100' as const },
+                  { label: '今日書いた分', value: 'today' as const },
+                ].map((range) => (
+                  <button
+                    key={range.value}
+                    onClick={() => runExport(exportRangeMode.type || 'download', range.value)}
+                    className="w-full py-4 text-[11px] font-bold text-neutral-300 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all"
+                  >
+                    {range.label}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setExportRangeMode({ show: false, type: null })}
+                  className="w-full py-4 text-[10px] font-bold text-neutral-500 uppercase tracking-widest mt-2"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
